@@ -2,11 +2,13 @@
 
 > Select text, hit ⌃⌥R, pick a tone, done — in place.
 
-A select-to-rewrite tool for macOS. It wraps [Hammerspoon](https://www.hammerspoon.org/), talks to **any OpenAI-compatible endpoint**, and collapses "select → copy → call the model → paste back" into two key presses. Your text only goes to the endpoint you configure — never through a third party.
+**A select-to-rewrite tool for macOS, built on [Hammerspoon](https://www.hammerspoon.org/).** It talks to **any OpenAI-compatible endpoint** and collapses "select → copy → call the model → paste back" into two key presses. Your text only goes to the endpoint you configure — never through a third party.
+
+The UI, the shortcuts, the clipboard handling and the panels are all Hammerspoon primitives underneath; this project is a ~1000-line Lua config. **You need Hammerspoon installed** — there is no standalone binary to download.
 
 [![Platform](https://img.shields.io/badge/platform-macOS-000000?logo=apple&logoColor=white)](#)
+[![Built on](https://img.shields.io/badge/built%20on-Hammerspoon-2C2C2E)](https://www.hammerspoon.org/)
 [![License](https://img.shields.io/badge/license-MIT-3DA639)](#license)
-[![Made with](https://img.shields.io/badge/made%20with-Hammerspoon-2C2C2E)](https://www.hammerspoon.org/)
 
 [中文](README.md) · **English**
 
@@ -16,13 +18,31 @@ A select-to-rewrite tool for macOS. It wraps [Hammerspoon](https://www.hammerspo
 
 ## Why
 
-I wanted something like **Myna** — select a sentence, press a key, and it reads better. But Myna is Windows-only, and most alternatives either require a subscription, lock you into one model, or quietly ship your text to their own servers.
+I wanted something like **Myna** — select a sentence, press a key, and it reads better.
 
-WordWand takes a different route: **own the UI, own the model.**
+Myna *does* have a macOS build, and it's a genuinely nice piece of software. But it's subscription-based: once the free quota runs out you keep paying to use it. I didn't want a recurring bill for a keystroke-level action, and I definitely didn't want to be locked to a single vendor's models — some days I want the cheap one, some days the strong one, and some days I want my own gateway.
+
+So I built my own: **own the UI, own the model.**
 
 - The panel is hand-drawn (not a system component) and follows macOS visual language
 - Models are pulled from your endpoint; the key stays in your hands
 - Everything lives in one `init.lua` — change behavior by editing it
+
+## What it's built on
+
+WordWand is not a standalone app — it's **a Hammerspoon config**. Knowing that makes install and troubleshooting much easier:
+
+| Capability | Provided by |
+|---|---|
+| Global shortcuts (⌃⌥R / ⌃⌥X) | `hs.hotkey` |
+| Simulate ⌘C / ⌘V for selection and paste-back | `hs.eventtap` + `hs.pasteboard` |
+| HTTP + JSON | `hs.http` + `hs.json` |
+| Panels (hand-drawn HTML cards) | `hs.webview` |
+| Menu bar icon and menu | `hs.menubar` |
+| Toasts | `hs.alert` |
+| Remembering your model | `hs.settings` |
+
+So: **Hammerspoon must be installed, with Accessibility permission granted**, or the selection can't be read. [Install steps below](#install).
 
 ## Features
 
@@ -214,10 +234,21 @@ Sections inside `init.lua`:
 - Long text is bounded by the model's context window — it errors instead of chunking
 - The panel is fixed at horizontal center, ~26% down the screen; it doesn't follow the cursor
 
+## How it differs from Myna
+
+| | Myna | WordWand |
+|---|---|---|
+| Platform | macOS / Windows | macOS |
+| Form | Standalone app | Hammerspoon config |
+| Models | Vendor cloud, fixed | Any OpenAI-compatible endpoint |
+| Pricing | Subscription / free quota | **Free** — you only pay your own API usage |
+| Data | Sent to vendor's cloud AI | Only to the endpoint you configure |
+| Customization | Custom prompts | Edit the code — anything is fair game |
+
 ## Credits
 
-- [Hammerspoon](https://www.hammerspoon.org/) — none of this exists without it
-- Myna — the original inspiration (Windows only, unfortunately)
+- [Hammerspoon](https://www.hammerspoon.org/) — every primitive here is theirs
+- Myna — the interaction inspiration. It nailed "select and rewrite in place"; this project just takes a different route: **your models, your pricing**
 
 ## License
 

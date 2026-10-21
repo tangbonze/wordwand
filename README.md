@@ -2,11 +2,13 @@
 
 > 选中一段文字，按一下 ⌃⌥R，选个语气，原地改好。
 
-macOS 划词改写工具。用 [Hammerspoon](https://www.hammerspoon.org/) 做外壳，接**任意 OpenAI 兼容接口**，把「选中 → 复制 → 调模型 → 粘回原位」压缩成两次按键。文字只进你自己配置的接口，不经过任何第三方服务器。
+**一个基于 [Hammerspoon](https://www.hammerspoon.org/) 的 macOS 划词改写工具。** 它接**任意 OpenAI 兼容接口**，把「选中 → 复制 → 调模型 → 粘回原位」压缩成两次按键。文字只进你自己配置的接口，不经过任何第三方服务器。
+
+界面、快捷键、剪贴板、面板渲染全部由 Hammerspoon 提供底层能力，本项目是一份 ~1000 行的 Lua 配置——**装上 Hammerspoon 才能跑**，没有独立 App 可执行文件。
 
 [![Platform](https://img.shields.io/badge/platform-macOS-000000?logo=apple&logoColor=white)](#)
+[![Built on](https://img.shields.io/badge/built%20on-Hammerspoon-2C2C2E)](https://www.hammerspoon.org/)
 [![License](https://img.shields.io/badge/license-MIT-3DA639)](#license)
-[![Made with](https://img.shields.io/badge/made%20with-Hammerspoon-2C2C2E)](https://www.hammerspoon.org/)
 
 **中文** · [English](README.en.md)
 
@@ -16,13 +18,31 @@ macOS 划词改写工具。用 [Hammerspoon](https://www.hammerspoon.org/) 做�
 
 ## 为什么要做这个
 
-起因是想找一个像 **Myna 鸣意** 那样的划词改写工具：选中一句话，按一下，它就变通顺了。但 Myna 只有 Windows 版；市面上的替代品要么按月订阅，要么锁死模型，要么默认把正文上传到厂商自己的服务器。
+起因是想找一个像 **Myna 鸣意** 那样的划词改写工具：选中一句话，按一下，它就变通顺了。
 
-WordWand 换了个思路——**界面自己做，模型自己接**：
+Myna 是有 macOS 版的，体验也确实不错——但它是订阅制，免费额度用完之后要持续付费才能继续用。我不想为了「按一下改写」这种高频小动作按月交钱，更不想被锁死在某一家模型上：今天想用便宜的、明天想换更强的、或者想让文字走自己的网关，都应该由我说了算。
+
+所以干脆自己搭一个：**界面自己做，模型自己接**。
 
 - 面板是自绘的（不是系统组件），样式跟着 macOS 走
 - 模型从你自己填的接口地址拉，Key 也由你自己保管
 - 全部逻辑在一个 `init.lua` 里，想改行为直接改代码
+
+## 它建立在什么之上
+
+WordWand 不是一个独立应用，它是 **Hammerspoon 的一份配置**。理解这一点，安装和排错都会简单很多：
+
+| 你需要的能力 | 由谁提供 |
+|---|---|
+| 全局快捷键（⌃⌥R / ⌃⌥X） | `hs.hotkey` |
+| 模拟 ⌘C/⌘V 取选区、粘回 | `hs.eventtap` + `hs.pasteboard` |
+| 调 HTTP 接口、解析 JSON | `hs.http` + `hs.json` |
+| 面板渲染与交互 | `hs.webview`（自绘 HTML 卡片） |
+| 菜单栏图标与菜单 | `hs.menubar` |
+| 提示气泡 | `hs.alert` |
+| 记住选过的模型 | `hs.settings` |
+
+因此：**Hammerspoon 必须先装好并授予辅助功能权限**，否则取不到选区。[安装步骤见下](#安装)。
 
 ## 功能
 
@@ -216,10 +236,21 @@ wordwand/
 - 长文本受模型上下文长度限制，超出会报错而不是自动切分
 - 面板位置固定在屏幕水平居中、垂直约 26% 处，不跟随光标
 
+## 和 Myna 的区别
+
+| | Myna 鸣意 | WordWand |
+|---|---|---|
+| 平台 | macOS / Windows | macOS |
+| 形态 | 独立 App | Hammerspoon 配置 |
+| 模型 | 官方云端，不可更换 | 任意 OpenAI 兼容接口 |
+| 计费 | 订阅 / 免费额度 | **免费**，只付你自己的 API 费用 |
+| 数据 | 发送至官方云端 AI | 只发到你配置的接口 |
+| 定制 | 自定义提示词 | 改代码，任何行为都能改 |
+
 ## 致谢
 
-- [Hammerspoon](https://www.hammerspoon.org/) —— 没有它就没有这一切
-- Myna 鸣意 —— 最初的灵感来源（虽然它没有 macOS 版）
+- [Hammerspoon](https://www.hammerspoon.org/) —— 本项目的全部底层能力都来自它
+- Myna 鸣意 —— 交互上的灵感来源。它把「选中即改写」这件事做得很顺手，而这个项目只是换了一条路：**用你自己的模型、按你自己的价格**
 
 ## License
 
