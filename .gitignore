@@ -1,0 +1,10 @@
+# macOS
+.DS_Store
+
+# 本地密钥与运行时缓存，绝不入库
+secrets/
+*.key
+models.cache.json
+
+# 安装脚本产生的备份
+*.bak.*
