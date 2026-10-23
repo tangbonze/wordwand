@@ -97,12 +97,13 @@ end
 
 -- 统一提示样式：所有 toast 字号一致
 local TOAST = {
-  textSize   = 15,
-  radius     = 11,
-  strokeWidth = 0,
-  padding    = 12,
-  fillColor  = { white = 0.10, alpha = 0.93 },
-  textColor  = { white = 1, alpha = 1 },
+  textSize    = 15,
+  radius      = 12,
+  strokeWidth = 0.5,
+  strokeColor = { white = 1, alpha = 0.10 },
+  padding     = 12,
+  fillColor   = { white = 0.10, alpha = 0.92 },
+  textColor   = { white = 1, alpha = 1 },
 }
 
 local function toast(msg, secs)
@@ -372,13 +373,30 @@ local function execute(mode, text, targetApp)
 end
 
 --------------------------------------------------------------------------
--- 弹出面板（hs.webview，自绘 macOS 风格）
+-- macOS 27「Golden Gate」视觉变量
+--
+-- 27 对 Liquid Glass 的修正主线是「可读性优先」：加强背景扩散、把边缘压暗、
+-- 把镜面高光提亮、统一收紧窗口圆角。hs.webview 拿不到 NSVisualEffectView，
+-- 网页层做不了对桌面的 backdrop-filter（透明窗口里它只会模糊网页自身的空背景），
+-- 所以玻璃感用「不透明度接近实心的染色渐变 + 双层边缘 + 镜面高光」在 CSS 层
+-- 还原，而不是靠降低 alpha 让底下的文档透上来——那只会把面板弄脏。
+--
+-- 留白必须大于阴影扩散半径（约 3σ，σ≈模糊值/2），否则阴影尾巴会被窗口矩形
+-- 切出硬边。当前最大层 0 12px 30px -8px → σ=15，侧向 3σ-8=37 ≤ 38，够用。
+--------------------------------------------------------------------------
+local GLASS = {
+  radius     = 12,   -- 27 把各窗口圆角统一收紧，比 26 的小一号
+  pad_top    = 36,
+  pad_bottom = 64,
+  pad_side   = 38,
+}
+
+--------------------------------------------------------------------------
+-- 弹出面板（hs.webview，自绘 macOS 27 风格）
 --------------------------------------------------------------------------
 local POP = {
-  -- 留白必须大于阴影扩散半径（约 3σ，σ≈模糊值/2），否则阴影尾巴被窗口矩形切出硬边
-  -- CSS 模糊 30px → σ≈15 → 上 3σ-12=33 / 下 3σ+12=57 / 侧 3σ=45
   w = 436,
-  pad_top = 34, pad_bottom = 56, pad_side = 36,
+  pad_top = GLASS.pad_top, pad_bottom = GLASS.pad_bottom, pad_side = GLASS.pad_side,
   row_h = 30, row_gap = 2, card_pad = 7, foot_h = 20,
   wv = nil, uc = nil,
   keyTap = nil, mouseTap = nil,
@@ -396,34 +414,72 @@ end
 --------------------------------------------------------------------------
 -- 两个面板共用同一套卡片样式（圆角/阴影/页脚），保证观感一致
 --------------------------------------------------------------------------
-local CSS_BASE = [[
+local CSS_BASE = ([[
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;background:transparent;overflow:hidden;
  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif;
  -webkit-font-smoothing:antialiased;user-select:none;cursor:default}
-/* 不透明：webview 没有 vibrancy，半透明只会让底下的文档透上来变脏 */
-/* 阴影分三层：大范围柔和层 + 近距接触层 + .5px 描边，接近系统面板 */
-.card{position:absolute;left:36px;right:36px;top:34px;bottom:56px;
- background:#F6F6F8;border-radius:13px;padding:7px;display:flex;flex-direction:column;
- box-shadow:0 12px 30px rgba(0,0,0,.22),0 3px 8px rgba(0,0,0,.10),0 0 0 .5px rgba(0,0,0,.08)}
+
+/* 玻璃本体：顶部受光的染色渐变，越往下越沉，模拟光从上穿下来。
+   边缘三层——0.5px 压暗描边（27 的 darkened edge）、接触阴影、环境阴影；
+   内侧再补一道 1px 镜面高光和一道底部压暗，把卡片和桌面「推」开。 */
+.card{position:absolute;left:__PS__px;right:__PS__px;top:__PT__px;bottom:__PB__px;
+ border-radius:__R__px;padding:7px;display:flex;flex-direction:column;
+ background:
+  radial-gradient(140% 72% at 50% -18%, rgba(255,255,255,.78), rgba(255,255,255,0) 56%),
+  linear-gradient(180deg,#F5F6F9 0%,#F1F2F5 46%,#ECEDF1 100%);
+ box-shadow:
+  0 0 0 .5px rgba(0,0,0,.15),
+  0 2px 5px -1px rgba(0,0,0,.12),
+  0 14px 32px -10px rgba(0,0,0,.30),
+  inset 0 1px 0 rgba(255,255,255,.92),
+  inset 0 -1px 0 rgba(0,0,0,.05)}
+
+/* 镜面高光：沿上边缘的一道窄亮线，两端渐隐，不参与布局 */
+.card::after{content:"";position:absolute;left:0;right:0;top:0;height:1px;
+ border-radius:inherit;pointer-events:none;
+ background:linear-gradient(90deg,
+  rgba(255,255,255,0) 3%, rgba(255,255,255,.96) 20%,
+  rgba(255,255,255,.96) 80%, rgba(255,255,255,0) 97%)}
+
 .foot{margin-top:auto;height:20px;display:flex;align-items:center;padding:0 9px;
- font-size:11px;color:#9b9ba1;letter-spacing:.2px;border-top:1px solid rgba(0,0,0,.06)}
+ font-size:11px;color:#8A8F97;letter-spacing:.2px;border-top:1px solid rgba(0,0,0,.055)}
+
 @media (prefers-color-scheme: dark){
- .card{background:#2C2C2E;
-  box-shadow:0 12px 30px rgba(0,0,0,.6),0 3px 8px rgba(0,0,0,.35),0 0 0 .5px rgba(255,255,255,.10)}
- .foot{color:#8b8b91;border-top:1px solid rgba(255,255,255,.07)}
+ .card{background:
+   radial-gradient(140% 72% at 50% -18%, rgba(255,255,255,.11), rgba(255,255,255,0) 58%),
+   linear-gradient(180deg,#303136 0%,#28292E 46%,#222327 100%);
+  box-shadow:
+   0 0 0 .5px rgba(255,255,255,.13),
+   0 2px 6px -1px rgba(0,0,0,.45),
+   0 12px 30px -8px rgba(0,0,0,.62),
+   inset 0 1px 0 rgba(255,255,255,.11),
+   inset 0 -1px 0 rgba(0,0,0,.30)}
+ .card::after{background:linear-gradient(90deg,
+   rgba(255,255,255,0) 3%, rgba(255,255,255,.24) 20%,
+   rgba(255,255,255,.24) 80%, rgba(255,255,255,0) 97%)}
+ .foot{color:#8E939B;border-top:1px solid rgba(255,255,255,.07)}
 }
-]]
+]]):gsub("__PT__", tostring(GLASS.pad_top))
+   :gsub("__PB__", tostring(GLASS.pad_bottom))
+   :gsub("__PS__", tostring(GLASS.pad_side))
+   :gsub("__R__",  tostring(GLASS.radius))
 
 local CSS_MODE = [[
 .rows{display:flex;flex-direction:column;gap:2px}
-.row{display:flex;align-items:center;height:30px;padding:0 9px;border-radius:7px;gap:10px}
-.n{font-size:13px;font-weight:500;color:#1d1d1f;width:56px;flex:none}
-.h{font-size:12px;color:#8a8a8e;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.row.on{background:#0A84FF}
+.row{display:flex;align-items:center;height:30px;padding:0 9px;border-radius:6px;gap:10px;
+ transition:background .11s ease,box-shadow .11s ease}
+.n{font-size:13px;font-weight:510;color:#1D1D1F;width:56px;flex:none;letter-spacing:-.1px}
+.h{font-size:12px;color:#7E838C;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 选中态不是一块死蓝：带顶部镜面高光的玻璃色块，和卡片本身的光感一致 */
+.row.on{background:linear-gradient(180deg,#4AA0FF 0%,#0A7EF5 100%);
+ box-shadow:inset 0 .5px 0 rgba(255,255,255,.48),0 1px 2.5px rgba(10,110,240,.30)}
 .row.on .n{color:#fff}
-.row.on .h{color:rgba(255,255,255,.82)}
-@media (prefers-color-scheme: dark){ .n{color:#f2f2f4}.h{color:#9a9aa0} }
+.row.on .h{color:rgba(255,255,255,.80)}
+@media (prefers-color-scheme: dark){
+ .n{color:#F2F3F5}.h{color:#969BA4}
+ .row.on{background:linear-gradient(180deg,#3D96FF 0%,#0B75E6 100%)}
+}
 ]]
 
 local function page(css, body)
@@ -599,7 +655,7 @@ end
 --------------------------------------------------------------------------
 local MPICK = {
   w = 436,
-  pad_top = 34, pad_bottom = 56, pad_side = 36,
+  pad_top = GLASS.pad_top, pad_bottom = GLASS.pad_bottom, pad_side = GLASS.pad_side,
   card_pad = 7, search_h = 30, gap = 6, rows_visible = 8, row_h = 28, foot_h = 20,
   wv = nil, uc = nil, keyTap = nil, mouseTap = nil,
   onPick = nil, visible = false,
@@ -612,25 +668,35 @@ end
 function MPICK.height() return MPICK.pad_top + MPICK.cardH() + MPICK.pad_bottom end
 
 local CSS_PICK = [[
+/* 搜索栏按 27 的「统一工具栏」处理：压进卡片顶部的凹槽，列表从它下面滚过 */
 .sbox{height:30px;flex:none;display:flex;align-items:center;gap:6px;
- padding:0 8px;margin-bottom:6px;background:#E9E9EB;border-radius:7px}
-.sbox svg{flex:none;opacity:.4}
+ padding:0 9px;margin-bottom:6px;background:rgba(120,122,128,.11);border-radius:8px;
+ box-shadow:inset 0 1px 2px rgba(0,0,0,.05),inset 0 -.5px 0 rgba(255,255,255,.65)}
+.sbox svg{flex:none;opacity:.42}
 .sbox input{flex:1;min-width:0;border:0;outline:0;background:transparent;
- font:inherit;font-size:13px;color:#1d1d1f;pointer-events:none}
-.sbox input::placeholder{color:#a0a0a6}
-.cnt{flex:none;font-size:11px;color:#9b9ba1}
+ font:inherit;font-size:13px;color:#1D1D1F;pointer-events:none}
+.sbox input::placeholder{color:#9BA0A8}
+.cnt{flex:none;font-size:11px;color:#8A8F97;font-variant-numeric:tabular-nums}
 .list{height:238px;overflow-y:auto;display:flex;flex-direction:column;gap:2px}
 .list::-webkit-scrollbar{display:none}
-.row{display:flex;align-items:center;height:28px;padding:0 9px;border-radius:7px;flex:none}
-.mn{font-size:13px;color:#1d1d1f;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 27 的 scroll edge effect：内容滚到工具栏下面时顶端渐隐，而不是被硬切 */
+.list.sfade{-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 14px,#000 calc(100% - 14px),transparent 100%);
+ mask-image:linear-gradient(180deg,transparent 0,#000 14px,#000 calc(100% - 14px),transparent 100%)}
+.row{display:flex;align-items:center;height:28px;padding:0 9px;border-radius:6px;flex:none;
+ transition:background .11s ease,box-shadow .11s ease}
+.mn{font-size:13px;color:#1D1D1F;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+ letter-spacing:-.1px}
 .ck{flex:none;font-size:12px;color:#0A84FF;padding-left:6px}
-.row.on{background:#0A84FF}
+.row.on{background:linear-gradient(180deg,#4AA0FF 0%,#0A7EF5 100%);
+ box-shadow:inset 0 .5px 0 rgba(255,255,255,.48),0 1px 2.5px rgba(10,110,240,.30)}
 .row.on .mn,.row.on .ck{color:#fff}
-.empty{padding:10px 9px;font-size:12px;color:#9b9ba1}
+.empty{padding:10px 9px;font-size:12px;color:#8A8F97}
 @media (prefers-color-scheme: dark){
- .sbox{background:#3A3A3C}
- .sbox input{color:#f2f2f4}
- .mn{color:#f2f2f4}
+ .sbox{background:rgba(120,122,128,.24);
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.28),inset 0 -.5px 0 rgba(255,255,255,.08)}
+ .sbox input{color:#F2F3F5}
+ .mn{color:#F2F3F5}
+ .row.on{background:linear-gradient(180deg,#3D96FF 0%,#0B75E6 100%)}
 }
 ]]
 
@@ -665,7 +731,11 @@ function render(){
     if (sel === 0) { list.scrollTop = 0; }        /* 回到顶部，避免首行被切 */
     else { el.scrollIntoView({ block: 'nearest' }); }
   }
+  syncFade();
 }
+/* 27 的 scroll edge effect：滚动时才给列表加渐隐遮罩 */
+function syncFade(){ list.classList.toggle('sfade', list.scrollTop > 2); }
+list.addEventListener('scroll', syncFade);
 function setQuery(t){ q = t; sel = 0; render(); }
 function type(t){ setQuery(q + t); }
 function back(){ setQuery(q.slice(0, -1)); }
