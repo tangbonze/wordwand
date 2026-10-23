@@ -181,6 +181,20 @@ local function saveModelsCache(ids)
   f:close()
 end
 
+-- 从接口地址里取出主机名，用于报错和诊断
+local function apiHost(url)
+  return (tostring(url or CFG.api_url):gsub("^https?://", ""):gsub("/.*$", ""))
+end
+
+-- 网络层失败要和人话说清楚：hs.http 在连不上时给的是 status<=0 且 body 为空，
+-- 以前会一路走到 hs.json.decode，只在控制台刷一句「Error deserialising JSON」，
+-- 用户看到的是「HTTP 0」，完全看不出是 DNS 被污染还是 Key 失效。
+local function netFail(status, body, url)
+  if (status or 0) > 0 and body and #tostring(body) > 0 then return nil end
+  return "网络连不上 " .. apiHost(url) ..
+         "（DNS 被污染或连接被重置，请求根本没发出去；不是 Key 或额度的问题）"
+end
+
 local function fetchModels(cb)   -- cb(errText, count)
   local key = getKey()
   if not key then return cb("没有 API Key") end
@@ -188,6 +202,8 @@ local function fetchModels(cb)   -- cb(errText, count)
   local ok, err = pcall(hs.http.asyncGet, url,
     { ["Authorization"] = "Bearer " .. key },
     function(status, body)
+      local nf = netFail(status, body, url)
+      if nf then return cb(nf) end
       if status ~= 200 then return cb("HTTP " .. tostring(status)) end
       local okd, d = pcall(hs.json.decode, body or "")
       if not okd or type(d) ~= "table" or type(d.data) ~= "table" then
@@ -303,6 +319,9 @@ local function request(text, systemPrompt, cb)
     if done then return end
     done = true
     guard:stop()
+
+    local nf = netFail(status, respBody, CFG.api_url)
+    if nf then cb(nil, nf); return end
 
     local okDecode, data = pcall(hs.json.decode, respBody or "")
     if status ~= 200 then
@@ -948,6 +967,37 @@ end
 
 local enabled = true
 
+-- 网络诊断：把「是网不通还是 Key 不对」一次问清楚。
+-- 用 hs.task 异步跑，避免阻塞主线程（快捷键在诊断期间仍然可用）。
+local function netDiag()
+  showProgress("诊断中…")
+  local host = apiHost(CFG.api_url)
+  local cmd = "dig +short " .. host .. " A | head -1; " ..
+              "curl -s -o /dev/null -w '%{http_code}' --max-time 8 " ..
+              "https://" .. host .. "/v1/models"
+  local t = hs.task.new("/bin/sh", function(a, b, c)
+    local out = (type(b) == "string") and b or c or ""
+    local lines = {}
+    for l in out:gmatch("[^\n]+") do lines[#lines + 1] = l end
+    local dns  = (lines[1] or ""):match("%d+%.%d+%.%d+%.%d+") or "无记录"
+    local code = (lines[#lines] or ""):match("%d%d%d") or "000"
+    hideProgress()
+    local msg
+    if code == "401" then
+      msg = "网络正常，服务端有响应（401 = Key 没带上或无效）"
+    elseif code == "200" then
+      msg = "网络正常，接口通"
+    elseif code == "000" then
+      msg = "连不上 " .. host .. "｜解析到 " .. dns .. "｜被挡了，需要代理"
+    else
+      msg = host .. " 返回 " .. code .. "｜解析到 " .. dns
+    end
+    toast(msg, 8)
+    print("[netDiag] " .. msg .. "｜curl=" .. code .. "｜dns=" .. dns)
+  end, { "-c", cmd })
+  t:start()
+end
+
 local hkPick = hs.hotkey.bind({ "ctrl", "alt" }, "R", pick)
 
 hs.hotkey.bind({ "ctrl", "alt" }, "X", function()
@@ -1082,6 +1132,7 @@ end)
 --   _G.hsRewritePickModel() 打开模型选择面板
 --   _G.hsRewriteMenu        菜单栏对象
 _G.hsRewritePickModel = pickModel
+_G.hsRewriteNetDiag = netDiag
 _G.hsRewritePreview = function()
   showPopup(function() end)
   if POP.mouseTap then POP.mouseTap:stop(); POP.mouseTap = nil end
