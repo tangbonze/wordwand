@@ -30,7 +30,7 @@ KEYFILE="$DEST/secrets/teamorouter.key"
 if [ ! -f "$KEYFILE" ]; then
   : > "$KEYFILE"
   chmod 600 "$KEYFILE"
-  echo "· 已创建 $KEYFILE（600）"
+  echo "· 已创建 ${KEYFILE}（600）"
 fi
 
 if [ -s "$KEYFILE" ]; then
