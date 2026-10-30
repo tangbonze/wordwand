@@ -37,8 +37,9 @@ if [ -s "$KEYFILE" ]; then
   echo "· API Key 已存在，保持不动"
 else
   echo
-  echo "下一步：把 API Key 写进去"
-  echo "  printf '%s' 'sk-your-key' > \"$KEYFILE\""
+  echo "下一步：填 API Key（二选一）"
+  echo "  · 图形界面：重载后点菜单栏图标 → 设置…，粘贴后点「保存」，可当场「测试连接」"
+  echo "  · 命令行：  printf '%s' 'sk-your-key' > \"$KEYFILE\""
 fi
 
 echo

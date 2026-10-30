@@ -4,7 +4,7 @@
 
 **A select-to-rewrite tool for macOS, built on [Hammerspoon](https://www.hammerspoon.org/).** It talks to **any OpenAI-compatible endpoint** and collapses "select → copy → call the model → paste back" into two key presses. Your text only goes to the endpoint you configure — never through a third party.
 
-The UI, the shortcuts, the clipboard handling and the panels are all Hammerspoon primitives underneath; this project is a ~1000-line Lua config. **You need Hammerspoon installed** — there is no standalone binary to download.
+The UI, the shortcuts, the clipboard handling and the panels are all Hammerspoon primitives underneath; this project is a ~1500-line Lua config. **You need Hammerspoon installed** — there is no standalone binary to download.
 
 [![Platform](https://img.shields.io/badge/platform-macOS-000000?logo=apple&logoColor=white)](#)
 [![Built on](https://img.shields.io/badge/built%20on-Hammerspoon-2C2C2E)](https://www.hammerspoon.org/)
@@ -55,7 +55,7 @@ So: **Hammerspoon must be installed, with Accessibility permission granted**, or
 | **Remembers** | Recently used models float to the top across restarts; current one is checked |
 | **Never steals focus** | The panel is a non-activating overlay, so the original app stays frontmost and paste-back works |
 | **Light & dark** | Follows the system appearance; the menu bar icon is a vector template image |
-| **Key never in config** | Env var / `chmod 600` file / Keychain, tried in that order |
+| **Key in the GUI** | Menu bar → Settings…: paste the key, test it, clear it. Stored in a `chmod 600` file or the Keychain — no terminal needed |
 | **Real error messages** | HTTP status, parse failures and timeouts surface instead of failing silently |
 
 ## Screenshots
@@ -67,6 +67,32 @@ So: **Hammerspoon must be installed, with Accessibility permission granted**, or
 **Model panel** — from the menu bar: *搜索模型…*. Type to filter (no need to click the field first); the active model is checked.
 
 ![Model panel](docs/screenshots/models.png)
+
+**Settings panel** — menu bar → **设置…**. Everything configurable lives on this one page, split into labelled groups; same glass visual language as the two panels above, and likewise a non-activating overlay that doesn't steal focus from your app.
+
+| Group | Contents |
+|---|---|
+| 接口 (endpoint) | API endpoint, API key, where to store it (secrets file 600 / Keychain) |
+| 快捷键 (shortcuts) | Both hotkeys — click a keycap, then press the new combination |
+| 生成 (generation) | Model (「选择…」 opens the model panel), temperature (严谨 0 / 标准 0.3 / 发散 0.7), timeout (30 / 60 / 120 s) |
+| 通用 (general) | Launch at login |
+| Footer | Open config file, reload |
+
+Keyboard: `Tab` switch field, `⌘A` clear, `⌘V` paste, `⏎` save, `esc` cancel. Only the key and endpoint need Save; everything else is written immediately.
+
+![Settings panel](docs/screenshots/settings.png)
+
+**Menu bar icon** — traced from SF Symbols' `wand.and.stars`: an even-width, round-capped wand held at 45°, with an outlined tip section (a rounded slot carved out of it, as if the head is not lit yet) and three four-point stars — a large one upper right, a medium one at the left, a small one below.
+
+![Menu bar icon](docs/screenshots/icon.png)
+
+A single 18×18 pt vector template — black plus alpha only — handed to the system as a template image, so macOS inverts it for the light and dark menu bar. There is no second asset to maintain. The geometry lives in `icons/make-icon.py`; rerun it after editing:
+
+```bash
+python3 icons/make-icon.py     # overwrites icons/rewrite.pdf
+```
+
+`STYLE` at the top of that file selects between three compositions: `"sf"` (the default — a wand plus three stars, traced from `wand.and.stars`), `"star"` (an earlier hand-laid arrangement, with a tapered rod and a beveled tip) and `"rays"` (a ring of short dashes around the tip, after `wand.and.rays`). All three are drawn as plain paths: an SF Symbol cannot be turned into a vector template, because drawing one into a PDF context yields a bitmap that `hs.menubar` crops down to a black blob. The proportions are traced instead — element positions and star-arm weight were measured off the original and converted to points.
 
 ## Install
 
@@ -97,7 +123,9 @@ mkdir -p ~/.hammerspoon/icons && cp icons/rewrite.pdf ~/.hammerspoon/icons/
 
 ### 3. API key
 
-Pick one. Lookup order is **env → file → Keychain**.
+**Via the GUI (recommended):** click the menu bar icon → **设置…**, paste the key, hit Save — then hit "测试连接" to verify it right there. Takes effect immediately, no reload. The panel also shows which source the current key comes from (env / file / Keychain).
+
+Command line works too; pick one. Lookup order is **env → file → Keychain**.
 
 **A. File (simplest)**
 
@@ -115,7 +143,7 @@ Takes effect immediately — the file is re-read on every request, no reload nee
 launchctl setenv WORDWAND_API_KEY 'sk-your-key-here'
 ```
 
-`launchctl setenv` does not affect already-running apps; restart Hammerspoon.
+`launchctl setenv` does not affect already-running apps; restart Hammerspoon. Note the env var wins over everything: once it's set, a key saved in the GUI is ignored (the panel warns you about this).
 
 **C. Keychain**
 
@@ -125,7 +153,9 @@ security add-generic-password -s hammerspoon-teamorouter -w 'sk-your-key-here'
 
 ### 4. Point it at your endpoint (optional)
 
-The default is TeamoRouter. To use OpenAI, DeepSeek, Moonshot, a local vLLM or Ollama, edit one line at the top of `init.lua`:
+The default is TeamoRouter. To use OpenAI, DeepSeek, Moonshot, a local vLLM or Ollama, **just change the endpoint in Settings…** — it's remembered (via `hs.settings`) and the model list of the old gateway is invalidated automatically.
+
+Or edit one line at the top of `init.lua`:
 
 ```lua
 local CFG = {
@@ -138,7 +168,7 @@ Anything OpenAI-compatible on `/v1/chat/completions` works. Afterwards refresh t
 
 ### 5. Reload
 
-Menu bar icon → **重新加载配置**, or ⌘R in the Hammerspoon console.
+Menu bar → **设置…** → footer 「重新加载」, or ⌘R in the Hammerspoon console.
 
 You should see:
 
@@ -164,7 +194,7 @@ Typical flow:
 3. Pick a mode with `↑↓`, press `⏎`
 4. A "润色中…" toast appears, then the selection is replaced and you get a "润色完成" confirmation
 
-The menu bar menu also offers: run a mode directly, switch model, search models, test the API connection, open the config, reload, and pause.
+The menu bar menu now only holds actions: run a mode directly, switch model (search / refresh / custom live in that submenu), and a single **设置…**. Everything that is configuration moved into the settings page — connection test, clear key, open config and reload live there too, and pausing is just the `⌃⌥X` hotkey.
 
 ## Customizing
 
@@ -183,8 +213,13 @@ Pick one from the menu once — it's persisted via `hs.settings`. Or edit `CFG.m
 
 ### Change the shortcut
 
+Menu bar → **设置…** → the 快捷键 group: click a keycap, then press the combination you want. At least one of `⌃ ⌥ ⇧ ⌘` is required; `esc` cancels. The two hotkeys can't collide — it tells you and leaves the binding untouched. Changes apply immediately and persist in `hs.settings` (`hotkey:pick` / `hotkey:toggle`), so a reload or reinstall keeps them.
+
+From the console:
+
 ```lua
-local hkPick = hs.hotkey.bind({ "ctrl", "alt" }, "R", pick)
+hsRewriteHotkeySet("pick", {"ctrl", "alt"}, "E")   -- rewrite hotkey becomes ⌃⌥E
+hsRewriteResetHotkeys()                            -- back to ⌃⌥R / ⌃⌥X
 ```
 
 ## FAQ
@@ -196,7 +231,7 @@ Check Hammerspoon's Accessibility permission, then open the console (menu bar �
 Selection is read by simulating `⌘C`. Apps that don't support `⌘C` (some terminals, remote desktops, games) won't work.
 
 **HTTP 401 / 403**
-Wrong or missing key. The menu item "API Key：…" shows which source was used (env / file / keychain).
+Wrong or missing key. Open menu bar → **设置…**, paste a key and hit "测试连接" — it tells you which step failed (no key / key rejected / network down), and the status pill shows the source currently in effect (env / file / keychain).
 
 **Model not found / 400**
 Try another model. Not every model listed by `/v1/models` is callable; image models (name contains `image`) are filtered out automatically since they can't serve chat completions.
@@ -211,8 +246,9 @@ Delete `~/.hammerspoon/models.cache.json` and reload to re-fetch.
 
 ```
 wordwand/
-├── init.lua                 # all logic, single file, ~1000 lines
+├── init.lua                 # all logic, single file, ~1500 lines
 ├── icons/rewrite.pdf        # menu bar icon (18×18 vector template)
+├── icons/make-icon.py       # icon generator, rerun after tweaking geometry
 ├── install.sh               # deploy to ~/.hammerspoon
 ├── docs/screenshots/        # documentation images
 ├── README.md                # 中文
@@ -225,7 +261,7 @@ Sections inside `init.lua`:
 - `MODES` — the seven prompts
 - `request()` — request building, timeout guard, error classification
 - `readSelection()` / `pasteText()` — grab the selection, paste it back
-- `POP` / `MPICK` — the two hand-drawn panels
+- `POP` / `MPICK` / `SET` — the three hand-drawn screens (mode picker, model picker, settings)
 
 ## Known limitations
 
