@@ -26,7 +26,7 @@ echo "· 已写入图标"
 
 mkdir -p "$DEST/secrets"
 chmod 700 "$DEST/secrets"
-KEYFILE="$DEST/secrets/teamorouter.key"
+KEYFILE="$DEST/secrets/deepseek.key"
 if [ ! -f "$KEYFILE" ]; then
   : > "$KEYFILE"
   chmod 600 "$KEYFILE"
