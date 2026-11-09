@@ -1,6 +1,6 @@
 -- WordWand · 文字魔杖
 -- 选中任意文字 → 按一下快捷键 → 弹出面板选处理方式 → 原地替换
--- 依赖 Hammerspoon，走任意 OpenAI 兼容接口（默认示例为 TeamoRouter）
+-- 依赖 Hammerspoon，走任意 OpenAI 兼容接口（默认示例为 DeepSeek）
 --
 -- 项目主页：https://github.com/tangbonze/wordwand
 -- 许可证：MIT
@@ -20,28 +20,23 @@ hs.autoLaunch(autoPref == nil and true or autoPref)
 -- ==========================================================================
 local CFG = {
   -- 任何 OpenAI 兼容的 /v1/chat/completions 地址都行
-  api_url      = "https://api.teamorouter.com/v1/chat/completions",
+  api_url      = "https://api.deepseek.com/v1/chat/completions",
 
   temperature  = 0.3,
   timeout      = 60,
 
   -- API Key 的三种取法，按顺序尝试：环境变量 → 文件 → 钥匙串
   env_key      = "WORDWAND_API_KEY",
-  key_file     = HOME .. "/.hammerspoon/secrets/teamorouter.key",
-  keychain_svc = "hammerspoon-teamorouter",
+  key_file     = HOME .. "/.hammerspoon/secrets/deepseek.key",
+  keychain_svc = "hammerspoon-deepseek",
 
   -- 菜单栏图标（矢量 PDF，模板图，自动适配明暗）
   icon         = HOME .. "/.hammerspoon/icons/rewrite.pdf",
 
-  -- 拉不到线上模型列表时的兜底选项
+  -- 拉不到线上模型列表时的兜底选项（DeepSeek 官方只有这两个）
   models = {
-    "deepseek-v4-flash",
-    "deepseek-v4-flash-free",
-    "deepseek-flash-free",
-    "glm-5.3-flash",
-    "gemini-3.8-flash",
-    "claude-haiku-4-5",
-    "gpt-5.6-luna",
+    "deepseek-flash",
+    "deepseek-v4-pro",
   },
 }
 
@@ -189,7 +184,7 @@ local function getKey()
   local k = fileKey()
   if k then return k, "file" end
 
-  -- 3) 钥匙串：security add-generic-password -s hammerspoon-teamorouter -w <KEY>
+  -- 3) 钥匙串：security add-generic-password -s hammerspoon-deepseek -w <KEY>
   local kc = readKeychain()
   if kc then return kc, "keychain" end
   return nil
