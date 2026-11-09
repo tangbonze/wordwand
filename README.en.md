@@ -131,8 +131,8 @@ Command line works too; pick one. Lookup order is **env → file → Keychain**.
 
 ```bash
 mkdir -p ~/.hammerspoon/secrets && chmod 700 ~/.hammerspoon/secrets
-printf '%s' 'sk-your-key-here' > ~/.hammerspoon/secrets/teamorouter.key
-chmod 600 ~/.hammerspoon/secrets/teamorouter.key
+printf '%s' 'sk-your-key-here' > ~/.hammerspoon/secrets/deepseek.key
+chmod 600 ~/.hammerspoon/secrets/deepseek.key
 ```
 
 Takes effect immediately — the file is re-read on every request, no reload needed.
@@ -148,12 +148,12 @@ launchctl setenv WORDWAND_API_KEY 'sk-your-key-here'
 **C. Keychain**
 
 ```bash
-security add-generic-password -s hammerspoon-teamorouter -w 'sk-your-key-here'
+security add-generic-password -s hammerspoon-deepseek -w 'sk-your-key-here'
 ```
 
 ### 4. Point it at your endpoint (optional)
 
-The default is TeamoRouter. To use OpenAI, DeepSeek, Moonshot, a local vLLM or Ollama, **just change the endpoint in Settings…** — it's remembered (via `hs.settings`) and the model list of the old gateway is invalidated automatically.
+The default is DeepSeek (`deepseek-flash` / `deepseek-v4-pro`, fetched live from the official `/v1/models`). To use OpenAI, TeamoRouter, Moonshot, a local vLLM or Ollama, **just change the endpoint in Settings…** — it's remembered (via `hs.settings`) and the model list of the old gateway is invalidated automatically.
 
 Or edit one line at the top of `init.lua`:
 
@@ -173,7 +173,7 @@ Menu bar → **设置…** → footer 「重新加载」, or ⌘R in the Hammers
 You should see:
 
 ```
-WordWand 已就绪 · 模型 deepseek-v4-flash（列表 53 个）· ⌃⌥R 弹面板 · API Key 已配置(file)
+WordWand 已就绪 · 模型 deepseek-flash（列表 2 个）· ⌃⌥R 弹面板 · API Key 已配置(file)
 ```
 
 ## Usage

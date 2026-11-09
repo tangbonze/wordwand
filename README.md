@@ -132,8 +132,8 @@ mkdir -p ~/.hammerspoon/icons && cp icons/rewrite.pdf ~/.hammerspoon/icons/
 
 ```bash
 mkdir -p ~/.hammerspoon/secrets && chmod 700 ~/.hammerspoon/secrets
-printf '%s' 'sk-your-key-here' > ~/.hammerspoon/secrets/teamorouter.key
-chmod 600 ~/.hammerspoon/secrets/teamorouter.key
+printf '%s' 'sk-your-key-here' > ~/.hammerspoon/secrets/deepseek.key
+chmod 600 ~/.hammerspoon/secrets/deepseek.key
 ```
 
 改完立刻生效，**不需要重载**（每次请求都重新读文件）。
@@ -149,12 +149,12 @@ launchctl setenv WORDWAND_API_KEY 'sk-your-key-here'
 **C. 系统钥匙串**
 
 ```bash
-security add-generic-password -s hammerspoon-teamorouter -w 'sk-your-key-here'
+security add-generic-password -s hammerspoon-deepseek -w 'sk-your-key-here'
 ```
 
 ### 4. 换成你自己的接口（可选）
 
-默认指向 TeamoRouter。想换 OpenAI、DeepSeek、Moonshot、本地 vLLM / Ollama 都行——**在「设置…」里直接改接口地址最省事**，改完会记住（存 `hs.settings`），并自动作废旧网关的模型列表。
+默认指向 DeepSeek（`deepseek-flash` / `deepseek-v4-pro`，官方 `/v1/models` 实拉）。想换 OpenAI、TeamoRouter、Moonshot、本地 vLLM / Ollama 都行——**在「设置…」里直接改接口地址最省事**，改完会记住（存 `hs.settings`），并自动作废旧网关的模型列表。
 
 也可以改 `init.lua` 顶部一处：
 
@@ -174,7 +174,7 @@ local CFG = {
 控制台出现下面这行就成功了：
 
 ```
-WordWand 已就绪 · 模型 deepseek-v4-flash（列表 53 个）· ⌃⌥R 弹面板 · API Key 已配置(file)
+WordWand 已就绪 · 模型 deepseek-flash（列表 2 个）· ⌃⌥R 弹面板 · API Key 已配置(file)
 ```
 
 ## 使用
