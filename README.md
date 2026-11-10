@@ -107,6 +107,16 @@ brew install --cask hammerspoon
 
 ### 2. 部署配置
 
+**一条命令**（不用 clone，脚本会自己从仓库拉）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tangbonze/wordwand/main/setup.sh | bash
+```
+
+它会把旧配置备份成 `init.lua.bak.<时间戳>`、装好 `init.lua` 和图标、引导你粘贴 API Key、把旧网关留下的 Key 移进废纸篓，最后自动重载。
+
+想先看代码再跑，就用 clone 的方式：
+
 ```bash
 git clone https://github.com/tangbonze/wordwand.git
 cd wordwand
