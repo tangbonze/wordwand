@@ -8,7 +8,7 @@
 -- 快捷键：⌃⌥R 弹面板　⌃⌥X 暂停/启用（都可以在菜单栏 → 设置… 里重新录）
 
 local HOME = os.getenv("HOME")
-local VERSION = "0.1.1"
+local VERSION = "0.1.2"
 
 require("hs.ipc")
 
@@ -202,17 +202,17 @@ local TOAST = {
   textColor   = { white = 1, alpha = 1 },
 }
 
-local function toast(msg, secs)
+local function toast(msg, secs, scr)
   if progressId then
     pcall(hs.alert.closeSpecific, progressId)
     progressId = nil
   end
-  return hs.alert.show(msg, TOAST, nil, secs or 1.6)
+  return hs.alert.show(msg, TOAST, scr, secs or 1.6)
 end
 
-local function showProgress(msg)
+local function showProgress(msg, scr)
   if progressId then pcall(hs.alert.closeSpecific, progressId) end
-  progressId = hs.alert.show(msg, TOAST, nil, 0)
+  progressId = hs.alert.show(msg, TOAST, scr, 0)
 end
 
 local function hideProgress()
@@ -333,10 +333,10 @@ pushRecentModel = function(name)
 end
 
 -- 模型多，用带搜索的自绘面板挑（和划词面板同一套视觉）
-local function pickModel(list)
+local function pickModel(list, scr)
   showModelPicker(list, CFG.model, function(id)
     if id then setModel(id) end
-  end)
+  end, scr)
 end
 
 local function refreshModels(verbose)
@@ -451,9 +451,9 @@ local function request(text, systemPrompt, cb, opt)
   end
 end
 
-local function execute(mode, text, targetApp)
+local function execute(mode, text, targetApp, targetScr)
   if busy then
-    toast("上一个还在处理中…", 1.2)
+    toast("上一个还在处理中…", 1.2, targetScr)
     return
   end
 
@@ -471,17 +471,17 @@ local function execute(mode, text, targetApp)
   end
 
   busy = true
-  showProgress(mode.name .. "中…")
+  showProgress(mode.name .. "中…", targetScr)
   request(text, prompt, function(result, err)
     busy = false
     hideProgress()
     if err then
-      toast(mode.name .. "失败：" .. err, 4)
+      toast(mode.name .. "失败：" .. err, 4, targetScr)
       return
     end
     local function apply()
       pasteText(result)
-      toast(mode.name .. "完成", 1.2)
+      toast(mode.name .. "完成", 1.2, targetScr)
     end
     local activated = false
     if targetApp then
@@ -525,6 +525,95 @@ local function panelFrame(panel)
   local ok, fr = pcall(function() return panel.wv:frame() end)
   if not ok or not fr then return nil end
   return fr
+end
+
+local function screenForPoint(p)
+  if not p or not p.x or not p.y then return nil end
+  for _, scr in ipairs(hs.screen.allScreens()) do
+    local f = scr:fullFrame()
+    if p.x >= f.x and p.x < f.x + f.w and p.y >= f.y and p.y < f.y + f.h then
+      return scr
+    end
+  end
+  return nil
+end
+
+local function screenForRect(r)
+  if not r or not r.x or not r.y then return nil end
+  local w, h = r.w or 0, r.h or 0
+  local center = screenForPoint({ x = r.x + w / 2, y = r.y + h / 2 })
+  if center then return center end
+  local bestScr, bestArea = nil, 0
+  for _, scr in ipairs(hs.screen.allScreens()) do
+    local f = scr:fullFrame()
+    local ix = math.max(0, math.min(r.x + w, f.x + f.w) - math.max(r.x, f.x))
+    local iy = math.max(0, math.min(r.y + h, f.y + f.h) - math.max(r.y, f.y))
+    local area = ix * iy
+    if area > bestArea then
+      bestArea = area
+      bestScr = scr
+    end
+  end
+  return bestScr
+end
+
+local function selectionScreen(app)
+  local win = (app and app:focusedWindow()) or hs.window.focusedWindow()
+  local okAx, ax = pcall(require, "hs.axuielement")
+  if okAx and ax then
+    local sys = ax.systemWideElement()
+    local el = sys and sys:attributeValue("AXFocusedUIElement")
+    if not el and app then
+      local appEl = ax.applicationElement(app)
+      el = appEl and appEl:attributeValue("AXFocusedUIElement")
+    end
+    if el then
+      -- 1) 优先取选区文本几何边界（原生控件/跨屏窗口最准）
+      local range = el:attributeValue("AXSelectedTextRange")
+      if range then
+        local bounds = el:parameterizedAttributeValue("AXBoundsForRange", range)
+        if type(bounds) == "table" and bounds.x and bounds.y and ((bounds.w or 0) > 0 or (bounds.h or 0) > 0) then
+          local scr = screenForRect(bounds)
+          if scr then return scr end
+        end
+      end
+      -- 2) 其次取焦点控件边界（按窗口范围裁剪，避免长文档虚拟高度跨到别的屏幕）
+      local pos = el:attributeValue("AXPosition")
+      local size = el:attributeValue("AXSize")
+      if type(pos) == "table" and type(size) == "table" and (size.w or 0) > 0 and (size.h or 0) > 0 then
+        local rx, ry, rw, rh = pos.x, pos.y, size.w, size.h
+        if win then
+          local wf = win:frame()
+          local x1 = math.max(rx, wf.x)
+          local y1 = math.max(ry, wf.y)
+          local x2 = math.min(rx + rw, wf.x + wf.w)
+          local y2 = math.min(ry + rh, wf.y + wf.h)
+          if x2 > x1 and y2 > y1 then
+            rx, ry, rw, rh = x1, y1, x2 - x1, y2 - y1
+          end
+        end
+        local scr = screenForRect({ x = rx, y = ry, w = rw, h = rh })
+        if scr then return scr end
+      end
+    end
+  end
+  -- 3) 退回焦点窗口所在屏，最后按鼠标所在屏 / 主屏兜底
+  if win then
+    local scr = win:screen()
+    if scr then return scr end
+  end
+  return hs.mouse.getCurrentScreen() or hs.screen.mainScreen() or hs.screen.primaryScreen()
+end
+
+local function panelCoords(w, h, yRatio, targetScr, clampBottom)
+  local scr = targetScr or selectionScreen()
+  local f = scr:frame()
+  local x = math.floor(f.x + (f.w - w) / 2)
+  local y = f.y + f.h * yRatio
+  if clampBottom then
+    y = math.min(y, f.y + f.h - h - 24)
+  end
+  return x, math.floor(y)
 end
 
 local function isInsideCard(panel)
@@ -766,10 +855,8 @@ local function popupEnsure()
       popupClose(idx and MODES[idx + 1] or nil)
     end)
 
-    local screen = hs.screen.mainScreen():frame()
     local h = POP.height()
-    local x = math.floor(screen.x + (screen.w - POP.w) / 2)
-    local y = math.floor(screen.y + screen.h * 0.26)
+    local x, y = panelCoords(POP.w, h, 0.26)
     local wv = hs.webview.new({ x = x, y = y, w = POP.w, h = h }, {}, uc)
 
     pcall(function() wv:windowStyle({ "borderless", "nonactivatingpanel" }) end)
@@ -791,7 +878,7 @@ local function popupEnsure()
   return true
 end
 
-local function showPopup(onPick)
+local function showPopup(onPick, targetScr)
   POP.onPick = onPick
 
   if not popupEnsure() then
@@ -813,6 +900,8 @@ local function showPopup(onPick)
   end
 
   POP.visible = true
+  local x, y = panelCoords(POP.w, POP.height(), 0.26, targetScr)
+  pcall(function() POP.wv:topLeft({ x = x, y = y }) end)
   pcall(function() POP.wv:evaluateJavaScript("setSel(0)") end)
   POP.wv:show()
   popupStartWatchers()
@@ -1044,9 +1133,7 @@ local function mpickEnsure()
       mpickClose(id)
     end)
 
-    local screen = hs.screen.mainScreen():frame()
-    local x = math.floor(screen.x + (screen.w - MPICK.w) / 2)
-    local y = math.floor(screen.y + screen.h * 0.18)
+    local x, y = panelCoords(MPICK.w, MPICK.height(), 0.18)
     local wv = hs.webview.new({ x = x, y = y, w = MPICK.w, h = MPICK.height() }, {}, uc)
 
     pcall(function() wv:windowStyle({ "borderless", "nonactivatingpanel" }) end)
@@ -1065,10 +1152,10 @@ local function mpickEnsure()
   return true
 end
 
-showModelPicker = function(list, current, cb)
+showModelPicker = function(list, current, cb, targetScr)
   list = list or modelList()
   if #list == 0 then
-    toast("模型列表还是空的，先在菜单里点「刷新列表」", 2.5)
+    toast("模型列表还是空的，先在菜单里点「刷新列表」", 2.5, targetScr)
     return
   end
 
@@ -1091,6 +1178,9 @@ showModelPicker = function(list, current, cb)
 
   MPICK.onPick = cb
   MPICK.visible = true
+  local scr = targetScr or hs.mouse.getCurrentScreen() or selectionScreen()
+  local x, y = panelCoords(MPICK.w, MPICK.height(), 0.18, scr)
+  pcall(function() MPICK.wv:topLeft({ x = x, y = y }) end)
   MPICK.wv:html(buildModelHTML(list, current))
   MPICK.wv:show()
   mpickStartWatchers()
@@ -1718,8 +1808,9 @@ local function settingsHandle(body)
     settingsQuick({ auto = on, msg = on and "登录时会自动启动" or "已取消登录自启", cls = "ok" })
   elseif act == "model" then
     -- 模型选择用自己那个带搜索的面板，先把设置关掉，免得两个浮层叠着
+    local scr = screenForRect(panelFrame(SET))
     setHide()
-    hs.timer.doAfter(0.25, function() pickModel() end)
+    hs.timer.doAfter(0.25, function() pickModel(nil, scr) end)
   elseif act == "open" then
     setHide()
     hs.timer.doAfter(0.2, function()
@@ -1821,9 +1912,12 @@ local function setStartWatchers()
   SET.mouseTap:start()
 end
 
-local function openSettings()
+local function openSettings(targetScr)
+  local scr = targetScr or hs.mouse.getCurrentScreen() or selectionScreen()
   if SET.wv then
     SET.visible = true
+    local x, y = panelCoords(SET.w, SET.height(), 0.20, scr, true)
+    pcall(function() SET.wv:topLeft({ x = x, y = y }) end)
     pcall(function() SET.wv:show() end)
     setStartWatchers()
     return
@@ -1833,11 +1927,7 @@ local function openSettings()
     local uc = hs.webview.usercontent.new("settings")
     uc:setCallback(function(m) settingsHandle(m.body) end)
 
-    local screen = hs.screen.mainScreen():frame()
-    local x = math.floor(screen.x + (screen.w - SET.w) / 2)
-    -- 面板比以前高，20% 的起始位置在小屏上可能顶出屏幕底边，这里夹一下
-    local y = math.floor(math.min(screen.y + screen.h * 0.20,
-                                  screen.y + screen.h - SET.height() - 24))
+    local x, y = panelCoords(SET.w, SET.height(), 0.20, scr, true)
     local wv = hs.webview.new({ x = x, y = y, w = SET.w, h = SET.height() }, {}, uc)
 
     -- 与 POP / MPICK 完全一致的四件套：无边框浮层 + 置顶 + 透明 + 自绘阴影
@@ -1884,13 +1974,14 @@ end
 
 local function runMode(mode)
   local app = hs.application.frontmostApplication()
+  local targetScr = selectionScreen(app)
   readSelection(function(raw)
     local text = trim(raw)
     if not text or text == "" then
-      toast("先选中一段文字再按 " .. hkLabel(HK.pick), 1.8)
+      toast("先选中一段文字再按 " .. hkLabel(HK.pick), 1.8, targetScr)
       return
     end
-    execute(mode, text, app)
+    execute(mode, text, app, targetScr)
   end)
 end
 
@@ -1905,16 +1996,17 @@ local function pick()
   end
 
   local app = hs.application.frontmostApplication()
+  local targetScr = selectionScreen(app)
   readSelection(function(raw)
     local text = trim(raw)
     if not text or text == "" then
-      toast("先选中一段文字再按 " .. hkLabel(HK.pick), 1.8)
+      toast("先选中一段文字再按 " .. hkLabel(HK.pick), 1.8, targetScr)
       return
     end
     showPopup(function(mode)
       if not mode then return end
-      execute(mode, text, app)
-    end)
+      execute(mode, text, app, targetScr)
+    end, targetScr)
   end)
 end
 

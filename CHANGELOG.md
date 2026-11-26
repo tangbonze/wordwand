@@ -2,6 +2,11 @@
 
 All notable changes to WordWand will be documented in this file.
 
+## [0.1.2] - 2026-11-26
+
+### Fixed
+- **多显示器选区屏幕跟随**：弹出模式面板、模型选择面板、设置面板以及执行提示不再固定在启动时缓存的 `mainScreen()` 位置；改为按选中文本边界（`AXBoundsForRange`）→ 按焦点窗口裁剪的控件边界 → 焦点窗口所在屏 → 鼠标所在屏的优先级动态定位，并在每次显示前重算并移动窗口坐标。
+
 ## [0.1.1] - 2026-11-26
 
 ### Fixed
