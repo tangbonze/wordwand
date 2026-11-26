@@ -286,6 +286,23 @@ Sections inside `init.lua`:
 - [Hammerspoon](https://www.hammerspoon.org/) — every primitive here is theirs
 - Myna — the interaction inspiration. It nailed "select and rewrite in place"; this project just takes a different route: **your models, your pricing**
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for the full changelog.
+
+### [0.1.2] - 2026-11-26
+- **Multi-display selection tracking**: Dynamically position the mode popup, model picker, settings panel, and alerts on the screen containing the selected text (`AXBoundsForRange` → window-clamped focused element → focused window screen → mouse screen).
+
+### [0.1.1] - 2026-11-26
+- **Fix click selection on mode popup**: Update `sel` on row click before executing instead of relying on `mouseenter` in a non-activating panel.
+- **Mouse hover highlighting**: Track `mouseMoved` via `hs.eventtap` to update row hover highlights on both the mode popup and the scrollable model picker.
+- **Fix card hit-testing bounds**: Swap inverted `pad_top` / `pad_bottom` bounds across all three panels so clicks near the top edge don't dismiss the popup.
+
+### [0.1.0] - 2026-11-10
+- Initial Hammerspoon select-to-rewrite workflow (`⌃⌥R` / `⌃⌥X`, any OpenAI-compatible endpoint).
+- macOS 27 (Golden Gate) Liquid Glass panels for mode selection, searchable model picker, and single-page settings with hotkey recording and network diagnostics.
+- Added `install.sh` and one-command `setup.sh` installer (DeepSeek default; env var / file / Keychain key sources).
+
 ## License
 
 [MIT](LICENSE) © 2026 Ke Feng
