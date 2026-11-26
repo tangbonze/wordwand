@@ -8,6 +8,7 @@
 -- 快捷键：⌃⌥R 弹面板　⌃⌥X 暂停/启用（都可以在菜单栏 → 设置… 里重新录）
 
 local HOME = os.getenv("HOME")
+local VERSION = "0.1.1"
 
 require("hs.ipc")
 
@@ -519,6 +520,25 @@ local function mousePoint()
   return hs.mouse.getAbsolutePosition()
 end
 
+local function panelFrame(panel)
+  if not panel.wv then return nil end
+  local ok, fr = pcall(function() return panel.wv:frame() end)
+  if not ok or not fr then return nil end
+  return fr
+end
+
+local function isInsideCard(panel)
+  local fr = panelFrame(panel)
+  if not fr then return true end
+  -- 命中判定按卡片本身算，窗口四周的透明留白不算（Hammerspoon 坐标系 y 向下递增）
+  local left   = fr.x + panel.pad_side
+  local right  = fr.x + fr.w - panel.pad_side
+  local top    = fr.y + panel.pad_top
+  local bottom = fr.y + fr.h - panel.pad_bottom
+  local p = mousePoint()
+  return p.x >= left and p.x <= right and p.y >= top and p.y <= bottom
+end
+
 --------------------------------------------------------------------------
 -- 弹出面板（hs.webview，自绘 macOS 27 风格）
 --------------------------------------------------------------------------
@@ -528,7 +548,7 @@ local POP = {
   row_h = 30, row_gap = 2, card_pad = 7, foot_h = 20,
   wv = nil, uc = nil,
   keyTap = nil, mouseTap = nil,
-  onPick = nil, visible = false,
+  onPick = nil, visible = false, hoverIdx = nil,
 }
 
 -- 按条目数算高度，加减模式时不用改数字
@@ -633,7 +653,7 @@ function move(d){setSel(sel+d);}
 function exec(){window.webkit.messageHandlers.rewrite.postMessage(JSON.stringify({i:sel}));}
 rows.forEach(function(e,i){
  e.addEventListener('mouseenter',function(){sel=i;paint();});
- e.addEventListener('click',function(){exec();});
+ e.addEventListener('click',function(){sel=i;paint();exec();});
 });
 paint();
 </script>]])
@@ -642,6 +662,7 @@ end
 local function popupStopWatchers()
   if POP.keyTap then POP.keyTap:stop(); POP.keyTap = nil end
   if POP.mouseTap then POP.mouseTap:stop(); POP.mouseTap = nil end
+  POP.hoverIdx = nil
 end
 
 local function popupHide()
@@ -660,7 +681,22 @@ end
 
 local DIGITS = { [18] = 1, [19] = 2, [20] = 3, [21] = 4, [23] = 5, [22] = 6, [26] = 7, [28] = 8, [25] = 9 }
 
+local function popupRowAtPoint(p)
+  local fr = panelFrame(POP)
+  if not fr then return nil end
+  local left  = fr.x + POP.pad_side + POP.card_pad
+  local right = fr.x + fr.w - POP.pad_side - POP.card_pad
+  if p.x < left or p.x > right then return nil end
+  local dy = p.y - (fr.y + POP.pad_top + POP.card_pad)
+  if dy < 0 then return nil end
+  local step = POP.row_h + POP.row_gap
+  local idx = math.floor(dy / step)
+  if idx >= #MODES or (dy - idx * step) > POP.row_h then return nil end
+  return idx
+end
+
 local function popupStartWatchers()
+  POP.hoverIdx = nil
   POP.keyTap = hs.eventtap.new({ hs.eventtap.event.types.keyDown }, function(e)
     local kc = e:getKeyCode()
     local f = e:getFlags()
@@ -668,10 +704,12 @@ local function popupStartWatchers()
 
     if kc == 53 then popupClose(nil); return true end
     if kc == 125 or kc == 48 then
+      POP.hoverIdx = nil
       if POP.wv then pcall(function() POP.wv:evaluateJavaScript("move(1)") end) end
       return true
     end
     if kc == 126 then
+      POP.hoverIdx = nil
       if POP.wv then pcall(function() POP.wv:evaluateJavaScript("move(-1)") end) end
       return true
     end
@@ -690,18 +728,22 @@ local function popupStartWatchers()
   end)
   POP.keyTap:start()
 
-  POP.mouseTap = hs.eventtap.new({ hs.eventtap.event.types.leftMouseDown }, function()
-    if not POP.wv then return false end
-    local ok, fr = pcall(function() return POP.wv:frame() end)
-    if not ok or not fr then return false end
-    -- 命中判定按卡片本身算，窗口四周的透明留白不算（否则面板外面有块点不动的死区）
-    local left   = fr.x + POP.pad_side
-    local right  = fr.x + fr.w - POP.pad_side
-    local bottom = fr.y + POP.pad_bottom
-    local top    = fr.y + fr.h - POP.pad_top
-    local p = mousePoint()
-    local inside = p.x >= left and p.x <= right and p.y >= bottom and p.y <= top
-    if not inside then popupClose(nil) end
+  POP.mouseTap = hs.eventtap.new({
+    hs.eventtap.event.types.leftMouseDown,
+    hs.eventtap.event.types.mouseMoved,
+  }, function(e)
+    if e:getType() == hs.eventtap.event.types.leftMouseDown then
+      if not isInsideCard(POP) then popupClose(nil) end
+      return false
+    end
+    -- 非激活浮层收不到 WKWebView 的悬停事件，由全局 mouseMoved 同步高亮行
+    local idx = popupRowAtPoint(e:location())
+    if idx ~= POP.hoverIdx then
+      POP.hoverIdx = idx
+      if idx and POP.wv then
+        pcall(function() POP.wv:evaluateJavaScript("setSel(" .. idx .. ")") end)
+      end
+    end
     return false
   end)
   POP.mouseTap:start()
@@ -771,10 +813,8 @@ local function showPopup(onPick)
   end
 
   POP.visible = true
+  pcall(function() POP.wv:evaluateJavaScript("setSel(0)") end)
   POP.wv:show()
-  hs.timer.doAfter(0.05, function()
-    if POP.wv then pcall(function() POP.wv:evaluateJavaScript("setSel(0)") end) end
-  end)
   popupStartWatchers()
 end
 
@@ -876,6 +916,16 @@ function exec(){
   if (!view.length) return;
   window.webkit.messageHandlers.modelpick.postMessage(JSON.stringify({ id: view[sel] }));
 }
+function hoverAt(x, y){
+  var el = document.elementFromPoint(x, y);
+  var r = el && el.closest ? el.closest('.row') : null;
+  if (!r) return;
+  var i = parseInt(r.getAttribute('data-i'), 10);
+  if (isNaN(i) || i === sel) return;
+  sel = i;
+  var rows = list.querySelectorAll('.row');
+  for (var k = 0; k < rows.length; k++) rows[k].classList.toggle('on', k === sel);
+}
 list.addEventListener('click', function(e){
   var r = e.target.closest ? e.target.closest('.row') : null;
   if (!r) return;
@@ -951,17 +1001,27 @@ local function mpickStartWatchers()
   end)
   MPICK.keyTap:start()
 
-  MPICK.mouseTap = hs.eventtap.new({ hs.eventtap.event.types.leftMouseDown }, function()
-    if not MPICK.wv then return false end
-    local ok, fr = pcall(function() return MPICK.wv:frame() end)
-    if not ok or not fr then return false end
-    local left   = fr.x + MPICK.pad_side
-    local right  = fr.x + fr.w - MPICK.pad_side
-    local bottom = fr.y + MPICK.pad_bottom
-    local top    = fr.y + fr.h - MPICK.pad_top
-    local p = mousePoint()
-    if not (p.x >= left and p.x <= right and p.y >= bottom and p.y <= top) then
-      mpickClose(nil)
+  local lastHoverAt = 0
+  MPICK.mouseTap = hs.eventtap.new({
+    hs.eventtap.event.types.leftMouseDown,
+    hs.eventtap.event.types.mouseMoved,
+  }, function(e)
+    if e:getType() == hs.eventtap.event.types.leftMouseDown then
+      if not isInsideCard(MPICK) then mpickClose(nil) end
+      return false
+    end
+    local now = hs.timer.secondsSinceEpoch()
+    if now - lastHoverAt < 0.02 then return false end
+    local fr = panelFrame(MPICK)
+    if not fr then return false end
+    local p = e:location()
+    local left   = fr.x + MPICK.pad_side + MPICK.card_pad
+    local right  = fr.x + fr.w - MPICK.pad_side - MPICK.card_pad
+    local top    = fr.y + MPICK.pad_top + MPICK.card_pad + MPICK.search_h + MPICK.gap
+    local bottom = top + MPICK.listH()
+    if p.x >= left and p.x <= right and p.y >= top and p.y <= bottom then
+      lastHoverAt = now
+      mpickJS(string.format("hoverAt(%d,%d)", math.floor(p.x - fr.x), math.floor(p.y - fr.y)))
     end
     return false
   end)
@@ -1755,18 +1815,7 @@ local function setStartWatchers()
   SET.keyTap:start()
 
   SET.mouseTap = hs.eventtap.new({ hs.eventtap.event.types.leftMouseDown }, function()
-    if not SET.wv then return false end
-    local ok, fr = pcall(function() return SET.wv:frame() end)
-    if not ok or not fr then return false end
-    -- 和另外两个面板一样：只有卡片本身算「里面」，四周透明留白点一下就关
-    local left   = fr.x + SET.pad_side
-    local right  = fr.x + fr.w - SET.pad_side
-    local bottom = fr.y + SET.pad_bottom
-    local top    = fr.y + fr.h - SET.pad_top
-    local p = mousePoint()
-    if not (p.x >= left and p.x <= right and p.y >= bottom and p.y <= top) then
-      setHide()
-    end
+    if not isInsideCard(SET) then setHide() end
     return false
   end)
   SET.mouseTap:start()
@@ -2120,7 +2169,7 @@ hs.timer.doAfter(1.5, function()
 end)
 
 local k1, s1 = getKey()
-print(string.format("WordWand 已就绪 · 模型 %s（列表 %d 个）· %s 弹面板 · API Key %s",
-  CFG.model, #modelList(), hkLabel(HK.pick),
+print(string.format("WordWand 已就绪 · v%s · 模型 %s（列表 %d 个）· %s 弹面板 · API Key %s",
+  VERSION, CFG.model, #modelList(), hkLabel(HK.pick),
   k1 and ("已配置(" .. tostring(s1) .. ")")
      or ("未配置 → 写入 " .. CFG.key_file .. " 或设置环境变量 " .. CFG.env_key)))
